@@ -19,6 +19,6 @@ RUN cd /workspace && cargo build --release
 FROM ubuntu:latest
 
 COPY --from=builder /workspace/target/release/node-template /opt/node-template
-COPY docker_start.sh /opt/docker_start.sh
+COPY scripts/docker_start.sh /opt/docker_start.sh
 CMD ["/bin/bash", "/opt/docker_start.sh"]
 
