@@ -6,7 +6,9 @@ use frame_support::sp_runtime::SaturatedConversion;
 /// <https://docs.substrate.io/reference/frame-pallets/>
 pub use pallet::*;
 
-pub mod weights;
+// pub mod weights;
+
+// #[cfg(feature = "runtime-benchmarks")]
 // pub mod benchmarking;
 
 // target/release/node-template \
