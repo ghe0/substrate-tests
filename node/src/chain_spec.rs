@@ -1,4 +1,4 @@
-use node_template_runtime::{
+use csov_runtime::{
 	AccountId, RuntimeGenesisConfig, Signature,
 	WASM_BINARY,
 };

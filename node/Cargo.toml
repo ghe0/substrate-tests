@@ -66,7 +66,8 @@ substrate-frame-rpc-system = { git = "https://github.com/paritytech/polkadot-sdk
 try-runtime-cli = { optional = true, git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.9.0" }
 
 # Local
-node-template-runtime = { path = "../runtime" }
+csov-runtime = { path = "../runtime/csov" }
+tcsov-runtime = { path = "../runtime/tcsov" }
 
 [features]
 default = []
@@ -75,7 +76,8 @@ runtime-benchmarks = [
 	"frame-benchmarking-cli/runtime-benchmarks",
 	"frame-benchmarking/runtime-benchmarks",
 	"frame-system/runtime-benchmarks",
-	"node-template-runtime/runtime-benchmarks",
+	"csov-runtime/runtime-benchmarks",
+	"tcsov-runtime/runtime-benchmarks",
 	"sc-service/runtime-benchmarks",
 	"sp-runtime/runtime-benchmarks",
 ]
@@ -83,7 +85,8 @@ runtime-benchmarks = [
 # in the near future.
 try-runtime = [
 	"frame-system/try-runtime",
-	"node-template-runtime/try-runtime",
+	"csov-runtime/try-runtime",
+	"tcsov-runtime/try-runtime",
 	"pallet-transaction-payment/try-runtime",
 	"sp-runtime/try-runtime",
 	"try-runtime-cli/try-runtime",

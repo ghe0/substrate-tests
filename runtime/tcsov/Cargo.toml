@@ -1,6 +1,6 @@
 [package]
-name = "node-template-runtime"
-description = "A solochain runtime built with Substrate"
+name = "tcsov-runtime"
+description = "A test solochain runtime built with Substrate"
 version = "0.0.1"
 license = "MIT-0"
 authors.workspace = true
@@ -44,9 +44,9 @@ pallet-transaction-payment = { default-features = false, git = "https://github.c
 pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.9.0" }
 
 # Custom Pallets
-pallet-node-staker = { default-features = false, path = "../pallets/node-staker" }
-pallet-sudo-authorities = { default-features = false, path = "../pallets/sudo-authorities" }
-pallet-user-manager = { default-features = false, path = "../pallets/user-manager" }
+pallet-node-staker = { default-features = false, path = "../../pallets/node-staker" }
+pallet-sudo-authorities = { default-features = false, path = "../../pallets/sudo-authorities" }
+pallet-user-manager = { default-features = false, path = "../../pallets/user-manager" }
 
 # Substrate Primitives
 sp-api = { default-features = false, git = "https://github.com/paritytech/polkadot-sdk.git", tag = "polkadot-v1.9.0" }

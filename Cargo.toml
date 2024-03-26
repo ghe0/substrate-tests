@@ -9,7 +9,7 @@ homepage = "https://paritytech.github.io/polkadot-sdk/master/polkadot_sdk_docs/i
 members = [
     "node",
     "pallets/*",
-    "runtime",
+    "runtime/*",
 ]
 resolver = "2"
 
