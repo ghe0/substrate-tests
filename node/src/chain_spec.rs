@@ -4,7 +4,6 @@ use runtime::{AccountId, AuraId, Signature, EXISTENTIAL_DEPOSIT};
 use sc_chain_spec::{ChainSpecExtension, ChainSpecGroup};
 use sc_service::ChainType;
 use serde::{Deserialize, Serialize};
-use sp_consensus_grandpa::AuthorityId as GrandpaId;
 use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 
@@ -43,9 +42,8 @@ type AccountPublic = <Signature as Verify>::Signer;
 /// Generate collator keys from seed.
 ///
 /// This function's return type must always match the session keys of the chain in tuple format.
-pub fn get_collator_keys_from_seed(seed: &str) -> (AuraId, GrandpaId) {
-	// get_from_seed::<AuraId>(seed)
-	(get_from_seed::<AuraId>(seed), get_from_seed::<GrandpaId>(seed))
+pub fn get_collator_keys_from_seed(seed: &str) -> AuraId {
+	get_from_seed::<AuraId>(seed)
 }
 
 /// Helper function to generate an account ID from seed
@@ -59,12 +57,8 @@ where
 /// Generate the session keys from individual elements.
 ///
 /// The input must be a tuple of individual keys (a single arg for now since we have just one key).
-pub fn template_session_keys(aura: AuraId, grandpa: GrandpaId) -> runtime::SessionKeys {
-	runtime::SessionKeys { aura, grandpa }
-}
-
-pub fn authority_keys_from_seed(s: &str) -> (AuraId, GrandpaId) {
-	(get_from_seed::<AuraId>(s), get_from_seed::<GrandpaId>(s))
+pub fn template_session_keys(keys: AuraId) -> runtime::SessionKeys {
+	runtime::SessionKeys { aura: keys }
 }
 
 pub fn development_config() -> ChainSpec {
@@ -90,13 +84,11 @@ pub fn development_config() -> ChainSpec {
 		vec![
 			(
 				get_account_id_from_seed::<sr25519::Public>("Alice"),
-				get_from_seed::<AuraId>("Alice"),
-				get_from_seed::<GrandpaId>("Alice"),
+				get_collator_keys_from_seed("Alice"),
 			),
 			(
 				get_account_id_from_seed::<sr25519::Public>("Bob"),
-				get_from_seed::<AuraId>("Alice"),
-				get_from_seed::<GrandpaId>("Alice"),
+				get_collator_keys_from_seed("Bob"),
 			),
 		],
 		vec![
@@ -143,13 +135,11 @@ pub fn local_testnet_config() -> ChainSpec {
 		vec![
 			(
 				get_account_id_from_seed::<sr25519::Public>("Alice"),
-				get_from_seed::<AuraId>("Alice"),
-				get_from_seed::<GrandpaId>("Alice"),
+				get_collator_keys_from_seed("Alice"),
 			),
 			(
 				get_account_id_from_seed::<sr25519::Public>("Bob"),
-				get_from_seed::<AuraId>("Alice"),
-				get_from_seed::<GrandpaId>("Alice"),
+				get_collator_keys_from_seed("Bob"),
 			),
 		],
 		vec![
@@ -175,7 +165,7 @@ pub fn local_testnet_config() -> ChainSpec {
 }
 
 fn testnet_genesis(
-	invulnerables: Vec<(AccountId, AuraId, GrandpaId)>,
+	invulnerables: Vec<(AccountId, AuraId)>,
 	endowed_accounts: Vec<AccountId>,
 	root: AccountId,
 	id: ParaId,
@@ -184,27 +174,21 @@ fn testnet_genesis(
 		"balances": {
 			"balances": endowed_accounts.iter().cloned().map(|k| (k, 1u64 << 60)).collect::<Vec<_>>(),
 		},
-		"aura": {
-			"authorities": endowed_accounts.iter().map(|x| (x.clone())).collect::<Vec<_>>(),
-		},
-		"grandpa": {
-			"authorities": endowed_accounts.iter().skip(1).map(|x| (x.clone(), 1)).collect::<Vec<_>>(),
-		},
 		"parachainInfo": {
 			"parachainId": id,
 		},
 		"collatorSelection": {
-			"invulnerables": invulnerables.iter().cloned().map(|(acc, _aura, _grandpa)| acc).collect::<Vec<_>>(),
+			"invulnerables": invulnerables.iter().cloned().map(|(acc, _)| acc).collect::<Vec<_>>(),
 			"candidacyBond": EXISTENTIAL_DEPOSIT * 16,
 		},
 		"session": {
 			"keys": invulnerables
 				.into_iter()
-				.map(|(acc, aura, grandpa)| {
+				.map(|(acc, aura)| {
 					(
-						acc.clone(), 		                  // account id
-						acc,                         		  // validator id
-						template_session_keys(aura, grandpa), // session keys
+						acc.clone(),                 // account id
+						acc,                         // validator id
+						template_session_keys(aura), // session keys
 					)
 				})
 			.collect::<Vec<_>>(),

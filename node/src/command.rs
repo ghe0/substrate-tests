@@ -393,4 +393,3 @@ impl CliConfiguration<Self> for RelayChainCli {
 		self.base.base.node_name()
 	}
 }
-

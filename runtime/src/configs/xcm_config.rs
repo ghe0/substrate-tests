@@ -1,10 +1,11 @@
-use super::{
+use crate::{
 	AccountId, AllPalletsWithSystem, Balances, ParachainInfo, ParachainSystem, PolkadotXcm,
 	Runtime, RuntimeCall, RuntimeEvent, RuntimeOrigin, WeightToFee, XcmpQueue,
 };
 use frame_support::{
 	parameter_types,
 	traits::{ConstU32, Contains, Everything, Nothing},
+	weights::Weight,
 };
 use frame_system::EnsureRoot;
 use pallet_xcm::XcmPassthrough;
@@ -136,9 +137,9 @@ impl xcm_executor::Config for XcmConfig {
 	type SafeCallFilter = Everything;
 	type Aliasers = Nothing;
 	type TransactionalProcessor = FrameTransactionalProcessor;
-	// type HrmpNewChannelOpenRequestHandler = ();
-	// type HrmpChannelAcceptedHandler = ();
-	// type HrmpChannelClosingHandler = ();
+	type HrmpNewChannelOpenRequestHandler = ();
+	type HrmpChannelAcceptedHandler = ();
+	type HrmpChannelClosingHandler = ();
 }
 
 /// No local origins on this chain are allowed to dispatch XCM sends/executions.
