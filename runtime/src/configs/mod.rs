@@ -32,7 +32,7 @@ use frame_support::{
 	derive_impl,
 	dispatch::DispatchClass,
 	parameter_types,
-	traits::{ConstBool, ConstU32, ConstU64, ConstU8, EitherOfDiverse, TransformOrigin},
+	traits::{ConstBool, ConstU32, ConstU128, ConstU64, ConstU8, EitherOfDiverse, TransformOrigin},
 	weights::{ConstantMultiplier, Weight},
 	PalletId,
 };
@@ -304,8 +304,42 @@ impl pallet_collator_selection::Config for Runtime {
 	type WeightInfo = ();
 }
 
-// Configure the pallet template in pallets/template.
-//impl pallet_parachain_template::Config for Runtime {
-	//type RuntimeEvent = RuntimeEvent;
-	//type WeightInfo = pallet_parachain_template::weights::SubstrateWeight<Runtime>;
-//}
+impl pallet_multisig::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	type RuntimeCall = RuntimeCall;
+	type WeightInfo = pallet_multisig::weights::SubstrateWeight<Runtime>;
+	type DepositBase = ConstU128<1>;
+	type DepositFactor = ConstU128<1>;
+	type MaxSignatories = ConstU32<15>;
+	type Currency = Balances;
+}
+
+impl pallet_grandpa::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+
+	type WeightInfo = ();
+	type MaxAuthorities = ConstU32<32>;
+	type MaxNominators = ConstU32<32>;
+	type MaxSetIdSessionEntries = ConstU64<0>;
+
+	type KeyOwnerProof = sp_core::Void;
+	type EquivocationReportSystem = ();
+}
+
+// Custom pallets
+impl pallet_sudo_authorities::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+}
+
+parameter_types! {
+	// 5EYCAe5ijiYfyeZ2JJCGq56LmPyNRAKzpG4QkoQkkQNB5e6Z;
+	pub const PalletIdNodeStaker: PalletId = PalletId(*b"py/trsry");
+}
+
+impl pallet_node_staker::Config for Runtime {
+	type PalletId = PalletIdNodeStaker;
+	type RuntimeEvent = RuntimeEvent;
+	type Currency = Balances;
+}
+
+impl pallet_user_manager::Config for Runtime {}

@@ -32,13 +32,15 @@ use frame_support::{
 pub use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 
+// Custom pallets.
+pub use pallet_sudo_authorities;
+pub use pallet_node_staker;
+pub use pallet_user_manager;
+
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
 
 use weights::ExtrinsicBaseWeight;
-
-// Import the template pallet.
-// pub use pallet_parachain_template;
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
@@ -236,6 +238,7 @@ construct_runtime!(
 
 		// Governance
 		Sudo: pallet_sudo = 15,
+                Multisig: pallet_multisig = 16,
 
 		// Collator support. The order of these 4 are important and shall not change.
 		Authorship: pallet_authorship = 20,
@@ -243,6 +246,7 @@ construct_runtime!(
 		Session: pallet_session = 22,
 		Aura: pallet_aura = 23,
 		AuraExt: cumulus_pallet_aura_ext = 24,
+                Grandpa: pallet_grandpa = 25,
 
 		// XCM helpers.
 		XcmpQueue: cumulus_pallet_xcmp_queue = 30,
@@ -250,8 +254,10 @@ construct_runtime!(
 		CumulusXcm: cumulus_pallet_xcm = 32,
 		MessageQueue: pallet_message_queue = 33,
 
-		// Template
-		// TemplatePallet: pallet_parachain_template = 50,
+		// Custom
+                SudoAuthorities: pallet_sudo_authorities = 50,
+                Staker: pallet_node_staker = 51,
+                UserManager: pallet_user_manager = 52,
 	}
 );
 
