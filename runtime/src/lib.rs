@@ -7,6 +7,7 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use pallet_grandpa::AuthorityId as GrandpaId;
+use pallet_node_staker::{Chat, Satelite};
 use sp_api::impl_runtime_apis;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
@@ -14,7 +15,7 @@ use sp_runtime::{
 	create_runtime_str, generic, impl_opaque_keys,
 	traits::{BlakeTwo256, Block as BlockT, IdentifyAccount, NumberFor, One, Verify},
 	transaction_validity::{TransactionSource, TransactionValidity},
-	ApplyExtrinsicResult, ExtrinsicInclusionMode, MultiSignature,
+	ApplyExtrinsicResult, ExtrinsicInclusionMode, MultiSignature, MultiSigner,
 };
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
@@ -196,12 +197,47 @@ impl frame_system::Config for Runtime {
 parameter_types! {
 	// 5EYCAe5ijiYfyeZ2JJCGq56LmPyNRAKzpG4QkoQkkQNB5e6Z;
 	pub const PalletId: PalletIdStruct = PalletIdStruct(*b"py/trsry");
+	pub const ChatBudgetPalletId: PalletIdStruct = PalletIdStruct(*b"py/chatx");
+	pub const SateliteBudgetPalletId: PalletIdStruct = PalletIdStruct(*b"py/satlt");
+
+	pub const MandatoryStake: Balance = 100 * UNIT;
+	pub const ProtectionPeriodBlocks: u32 = 60 * 60 * 24 * 3 / 6;
+	pub const SlashFactor: u8 = 13;
+	pub const StakePeriodBlocks: u32 = 60 * 60 * 24 * 30 / 6;
 }
 
-impl pallet_node_staker::Config for Runtime {
+impl pallet_node_staker::Config<Chat> for Runtime {
 	type PalletId = PalletId;
+	type BudgetPalletId = ChatBudgetPalletId;
+	type MandatoryStake = MandatoryStake;
+	type SlashFactor = SlashFactor;
+	type ProtectionPeriodBlocks = ProtectionPeriodBlocks;
+	type StakePeriodBlocks = StakePeriodBlocks;
 	type RuntimeEvent = RuntimeEvent;
 	type Currency = Balances;
+}
+
+impl pallet_node_staker::Config<Satelite> for Runtime {
+	type PalletId = PalletId;
+	type BudgetPalletId = SateliteBudgetPalletId;
+	type MandatoryStake = MandatoryStake;
+	type SlashFactor = SlashFactor;
+	type ProtectionPeriodBlocks = ProtectionPeriodBlocks;
+	type StakePeriodBlocks = StakePeriodBlocks;
+	type RuntimeEvent = RuntimeEvent;
+	type Currency = Balances;
+}
+
+parameter_types! {
+	pub const LightningPalletId: PalletIdStruct = PalletIdStruct(*b"py/light");
+}
+
+impl pallet_lightning::Config for Runtime {
+	type PalletId = LightningPalletId;
+	type RuntimeEvent = RuntimeEvent;
+	type Currency = Balances;
+	type Public = MultiSigner;
+	type Signature = Signature;
 }
 
 impl pallet_user_manager::Config for Runtime {}
@@ -211,7 +247,7 @@ impl pallet_aura::Config for Runtime {
 	type DisabledValidators = ();
 	type MaxAuthorities = ConstU32<32>;
 	type AllowMultipleBlocksPerSlot = ConstBool<false>;
-        type SlotDuration = pallet_aura::MinimumPeriodTimesTwo<Runtime>;
+	type SlotDuration = pallet_aura::MinimumPeriodTimesTwo<Runtime>;
 }
 
 impl pallet_grandpa::Config for Runtime {
@@ -292,6 +328,7 @@ impl pallet_multisig::Config for Runtime {
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
+#[rustfmt::skip]
 construct_runtime!(
 	pub struct Runtime {
 		System: frame_system,
@@ -300,11 +337,13 @@ construct_runtime!(
 		Grandpa: pallet_grandpa,
 		Balances: pallet_balances,
 		TransactionPayment: pallet_transaction_payment,
-		Staker: pallet_node_staker,
+		ChatStaker: pallet_node_staker::<Chat>,
+		SateliteStaker: pallet_node_staker::<Satelite>,
 		Sudo: pallet_sudo,
 		SudoAuthorities: pallet_sudo_authorities,
 		UserManager: pallet_user_manager,
 		Multisig: pallet_multisig,
+		Lightning: pallet_lightning,
 	}
 );
 
@@ -454,7 +493,7 @@ impl_runtime_apis! {
 		}
 
 		fn authorities() -> Vec<AuraId> {
-                        pallet_aura::Authorities::<Runtime>::get().into_inner()
+						pallet_aura::Authorities::<Runtime>::get().into_inner()
 		}
 	}
 

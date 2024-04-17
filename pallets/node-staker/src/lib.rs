@@ -1,12 +1,15 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use frame_support::sp_runtime::SaturatedConversion;
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://docs.substrate.io/reference/frame-pallets/>
 pub use pallet::*;
 
 pub mod weights;
+
+pub struct Chat;
+pub struct Satelite;
+
 // pub mod benchmarking;
 
 // target/release/node-template \
@@ -29,25 +32,29 @@ pub mod weights;
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
-	use codec::MaxEncodedLen;
 	use frame_support::{
 		pallet_prelude::*,
 		traits::{Currency, ExistenceRequirement},
 		PalletId,
 	};
 	use frame_system::pallet_prelude::*;
-	use sp_runtime::traits::{AccountIdConversion, StaticLookup};
+	use primitive_types::U256;
+	use scale_info::prelude::vec::Vec;
+	use sp_runtime::{
+		traits::{AccountIdConversion, StaticLookup},
+		SaturatedConversion,
+	};
 
 	/// Source type to be used in Lookup::lookup
 	pub type AccountIdLookupOf<T> = <<T as frame_system::Config>::Lookup as StaticLookup>::Source;
 
 	/// Type used to convert an integer into a Balance
 	// #[cfg(feature = "std")]
-	pub type BalanceOf<T> =
-		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+	pub type BalanceOf<T, I> =
+		<<T as Config<I>>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
-	pub type Ed = [u8; 32];
-	pub type CryptoHash = [u8; 32];
+	pub type Hash = [u8; 32];
+	pub type NodeIdentity = Hash;
 
 	pub const STAKE_AMOUNT: u128 = 1_000_000;
 	pub const INIT_VOTE_POOL: u32 = 3;
@@ -56,16 +63,16 @@ pub mod pallet {
 	pub const SLASH_FACTOR: u32 = 1;
 
 	#[pallet::pallet]
-	pub struct Pallet<T>(_);
+	pub struct Pallet<T, I = ()>(_);
 
 	#[pallet::error]
-	pub enum Error<T> {
-		/// Not enough votes in pool
-		NotEnoughVotes,
-		/// Too many votes
-		TooManyVotes,
+	pub enum Error<T, I = ()> {
 		/// The claim already exists.
 		AlreadyClaimed,
+		/// The user was recently slashed and has temporary protection.
+		RecentlySlashed,
+		/// User already voted in this vote.
+		AlreadyVoted,
 		/// Already joined/created stake.
 		AlreadyJoined,
 		/// The claim does not exist, so it cannot be revoked.
@@ -80,6 +87,8 @@ pub mod pallet {
 		CannotVoteForSelf,
 		/// Stake is locked and cannot be claimed.
 		StakeIsLocked,
+		/// Not enough reputation to transfer.
+		NotEnoughReputation,
 	}
 
 	#[derive(Clone, Copy, PartialEq, Debug, Encode, Decode, TypeInfo)]
@@ -88,139 +97,181 @@ pub mod pallet {
 		Ip6([u8; 16 + 2]),
 	}
 
-	#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Encode, Decode, TypeInfo)]
-	pub struct NodeIdentity {
-		pub sign: CryptoHash,
-		pub enc: CryptoHash,
-	}
-
-	impl MaxEncodedLen for NodeIdentity {
-		fn max_encoded_len() -> usize {
-			14 + 2 + 16 + 2
-		}
-	}
-
 	#[derive(Encode, Decode, TypeInfo, RuntimeDebug)]
-	#[scale_info(skip_type_params(T))]
-	pub struct Stake<T: Config> {
+	#[scale_info(skip_type_params(T, I))]
+	pub struct Stake<T: Config<I>, I: 'static = ()> {
 		owner: T::AccountId,
-		amount: BalanceOf<T>,
-		created_at: <T as pallet_timestamp::Config>::Moment,
-		votes: Votes,
-		id: Ed,
-		addr: NodeAddress,
-	}
-
-	impl<T: Config> Stake<T> {
-		fn apply_slashes(&self) -> BalanceOf<T> {
-			if self.votes.rating > 0 {
-				let amount = self.amount.saturated_into::<u128>();
-				amount
-					.saturating_sub(BASE_SLASH << u128::from(self.votes.rating * SLASH_FACTOR))
-					.saturated_into::<BalanceOf<T>>()
-			} else {
-				self.amount
-			}
-		}
-	}
-
-	#[derive(Encode, Decode, TypeInfo, Debug)]
-	struct Votes {
-		pool: u32,
-		rating: u32,
-	}
-
-	impl Default for Votes {
-		fn default() -> Self {
-			Self { pool: INIT_VOTE_POOL, rating: 0 }
-		}
+		staked: BalanceOf<T, I>,
+		frozen_until: BlockNumberFor<T>,
+		protected_until: BlockNumberFor<T>,
+		enc: Hash,
 	}
 
 	#[pallet::storage]
 	#[pallet::unbounded]
 	#[pallet::getter(fn list_stakes)]
-	pub type Stakes<T: Config> = StorageMap<
+	pub type Stakes<T: Config<I>, I: 'static = ()> = StorageMap<
 		Hasher = Blake2_128Concat,
 		Key = NodeIdentity,
-		Value = Stake<T>,
+		Value = Stake<T, I>,
 		QueryKind = OptionQuery,
 	>;
 
-	#[derive(Encode, Decode, TypeInfo, Debug, PartialEq, Clone)]
-	pub struct NodeData {
-		pub sign: CryptoHash,
-		pub enc: CryptoHash,
-		pub id: Ed,
-	}
+	#[pallet::storage]
+	#[pallet::unbounded]
+	#[pallet::getter(fn get_votes)]
+	pub type Votes<T: Config<I>, I: 'static = ()> = StorageMap<
+		Hasher = Blake2_128Concat,
+		Key = NodeIdentity,
+		Value = Vec<NodeIdentity>,
+		QueryKind = OptionQuery,
+	>;
+
+	#[pallet::storage]
+	#[pallet::unbounded]
+	#[pallet::getter(fn get_addresses)]
+	pub type Addresses<T: Config<I>, I: 'static = ()> = StorageMap<
+		Hasher = Blake2_128Concat,
+		Key = NodeIdentity,
+		Value = NodeAddress,
+		QueryKind = OptionQuery,
+	>;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
-	pub enum Event {
-		Joined { identity: Ed, addr: NodeAddress },
-		AddrChanged { identity: Ed, addr: NodeAddress },
-		Reclaimed { identity: Ed },
+	pub enum Event<T: Config<I>, I: 'static = ()> {
+		Joined { identity: NodeIdentity, addr: NodeAddress },
+		AddrChanged { identity: NodeIdentity, addr: NodeAddress },
+		Reclaimed { identity: NodeIdentity },
+		Voted { source: NodeIdentity, target: NodeIdentity },
 	}
 
 	#[pallet::config]
-	pub trait Config:
+	pub trait Config<I: 'static = ()>:
 		frame_system::Config + pallet_balances::Config + pallet_timestamp::Config
 	{
 		/// The treasury's pallet id, used for deriving its sovereign account ID.
 		#[pallet::constant]
 		type PalletId: Get<PalletId>;
 
-		/// Weight information for extrinsics in this pallet.
-		// type WeightInfo: WeightInfo;
+		/// The pallet id of the user manager to take funds from.
+		#[pallet::constant]
+		type BudgetPalletId: Get<PalletId>;
+
+		/// Amount of time for which funds are frozen.
+		#[pallet::constant]
+		type StakePeriodBlocks: Get<BlockNumberFor<Self>>;
+
+		#[pallet::constant]
+		type ProtectionPeriodBlocks: Get<BlockNumberFor<Self>>;
+
+		/// How much of the stake is slashed from the minimal stake.
+		/// (0 == 0%, 256 == 100%)
+		#[pallet::constant]
+		type SlashFactor: Get<u8>;
+
+		/// The minimum amount required to stake.
+		#[pallet::constant]
+		type MandatoryStake: Get<BalanceOf<Self, I>>;
 
 		/// The overarching event type.
-		type RuntimeEvent: From<Event> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+		type RuntimeEvent: From<Event<Self, I>>
+			+ IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
 		/// The staking balance.
 		type Currency: Currency<Self::AccountId>;
-
-		// type StakeDurationMilis: pallet_timestamp::Config::Moment;
 	}
 
-	impl<T: Config> Pallet<T> {
+	impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		pub fn account_id() -> T::AccountId {
 			T::PalletId::get().into_account_truncating()
+		}
+
+		pub fn budget_account_id() -> T::AccountId {
+			T::BudgetPalletId::get().into_account_truncating()
+		}
+
+		pub fn ensure_stake_owner(
+			identity: NodeIdentity,
+			origin: OriginFor<T>,
+		) -> Result<(T::AccountId, Stake<T, I>), DispatchError> {
+			let owner = ensure_signed(origin)?;
+			let stake = Stakes::<T, I>::get(identity).ok_or(Error::<T, I>::NoSuchStake)?;
+			ensure!(stake.owner == owner, Error::<T, I>::NotOwner);
+			Ok((owner, stake))
+		}
+
+		pub fn slash_amount() -> BalanceOf<T, I> {
+			let base = T::MandatoryStake::get();
+			let factor = T::SlashFactor::get();
+			let slash = base.saturated_into::<u128>() * factor as u128 / 256;
+			slash.saturated_into()
+		}
+	}
+
+	#[pallet::hooks]
+	impl<T: Config<I>, I: 'static> Hooks<BlockNumberFor<T>> for Pallet<T, I> {
+		fn on_initialize(n: BlockNumberFor<T>) -> Weight {
+			if n % T::StakePeriodBlocks::get() == BlockNumberFor::<T>::default() {
+				let total_stake = Stakes::<T, I>::iter_values()
+					.map(|s| s.staked.saturated_into::<u128>())
+					.sum::<u128>();
+				let budget =
+					T::Currency::total_balance(&Self::budget_account_id()).saturated_into::<u128>();
+
+				let budget_account = Self::budget_account_id();
+
+				for stake in Stakes::<T, I>::iter_values() {
+					let reward = U256::from(budget) *
+						U256::from(stake.staked.saturated_into::<u128>()) /
+						U256::from(total_stake);
+					T::Currency::transfer(
+						&budget_account,
+						&stake.owner,
+						u128::try_from(reward).unwrap().saturated_into(),
+						ExistenceRequirement::AllowDeath,
+					)
+					.unwrap();
+				}
+			}
+
+			Weight::default()
 		}
 	}
 
 	#[pallet::call]
-	impl<T: Config> Pallet<T> {
-		// #[pallet::weight(Weight::default())]
+	impl<T: Config<I>, I: 'static> Pallet<T, I> {
 		#[pallet::weight(1000000000000)]
 		#[pallet::call_index(0)]
 		pub fn join(
 			origin: OriginFor<T>,
-			node_data: NodeData,
+			identity: NodeIdentity,
+			enc: Hash,
 			addr: NodeAddress,
+			staked: BalanceOf<T, I>,
 		) -> DispatchResult {
-			let sender = ensure_signed(origin)?;
-			let amount = STAKE_AMOUNT;
-			let amount: BalanceOf<T> = amount.saturated_into::<BalanceOf<T>>();
+			let owner = ensure_signed(origin)?;
 			let treasury = Self::account_id();
+			let staked = staked.max(T::MandatoryStake::get());
 
 			// transfer stake money from the caller to the treasury account of this pallet
-			T::Currency::transfer(&sender, &treasury, amount, ExistenceRequirement::AllowDeath)?;
+			T::Currency::transfer(&owner, &treasury, staked, ExistenceRequirement::AllowDeath)?;
 
-			let stake = Stake::<T> {
-				amount,
-				owner: sender,
-				id: node_data.id,
-				votes: Votes::default(),
-				created_at: pallet_timestamp::Pallet::<T>::get(),
-				addr,
+			let stake = Stake::<T, I> {
+				staked,
+				owner,
+				frozen_until: frame_system::Pallet::<T>::block_number() +
+					T::StakePeriodBlocks::get(),
+				protected_until: frame_system::Pallet::<T>::block_number() +
+					T::ProtectionPeriodBlocks::get(),
+				enc,
 			};
 
-			let node_identity = NodeIdentity { sign: node_data.sign, enc: node_data.enc };
-
 			// prevent caller from joining again
-			ensure!(!Stakes::<T>::contains_key(node_identity), Error::<T>::AlreadyJoined);
-			Stakes::<T>::insert(node_identity, stake);
+			ensure!(!Stakes::<T, I>::contains_key(identity), Error::<T, I>::AlreadyJoined);
+			Stakes::<T, I>::insert(identity, stake);
 
-			Self::deposit_event(Event::Joined { addr, identity: node_data.id });
+			Self::deposit_event(Event::Joined { addr, identity });
 
 			Ok(())
 		}
@@ -229,78 +280,83 @@ pub mod pallet {
 		#[pallet::call_index(1)]
 		pub fn vote(
 			origin: OriginFor<T>,
-			identity: NodeIdentity,
+			source: NodeIdentity,
 			target: NodeIdentity,
-			rating: i32,
 		) -> DispatchResult {
-			let sender = ensure_signed(origin)?;
+			_ = Self::ensure_stake_owner(source, origin)?;
 
-			let mut stake = Stakes::<T>::get(identity).ok_or(Error::<T>::NoSuchStake)?;
-			ensure!(stake.owner == sender, Error::<T>::NotOwner);
+			ensure!(source != target, Error::<T, I>::CannotVoteForSelf);
 
-			let mut target_stake = Stakes::<T>::get(target).ok_or(Error::<T>::NoSuchStake)?;
-			ensure!(target_stake.owner != sender, Error::<T>::CannotVoteForSelf);
+			Votes::<T, I>::try_mutate(target, |votes_slot| {
+				let votes = votes_slot.get_or_insert_with(Default::default);
+				ensure!(!votes.contains(&source), Error::<T, I>::AlreadyClaimed);
 
-			stake.votes.pool = stake
-				.votes
-				.pool
-				.checked_sub(rating.unsigned_abs())
-				.ok_or(Error::<T>::NotEnoughVotes)?;
+				if votes.len() == Stakes::<T, I>::iter().count() / 2 {
+					votes_slot.take();
+					let to_burn = Self::slash_amount();
+					Stakes::<T, I>::try_mutate(target, |stake_slot| {
+						let stake = stake_slot.as_mut().ok_or(Error::<T, I>::NoSuchStake)?;
+						ensure!(
+							stake.protected_until <= frame_system::Pallet::<T>::block_number(),
+							Error::<T, I>::RecentlySlashed
+						);
+						stake.staked -= to_burn;
+						if stake.staked < T::MandatoryStake::get() {
+							stake_slot.take();
+							Self::deposit_event(Event::Reclaimed { identity: target });
+						}
+						DispatchResult::Ok(())
+					})?;
+				} else {
+					votes.push(source);
+				}
 
-			target_stake.votes.rating = target_stake
-				.votes
-				.rating
-				.checked_add_signed(-rating)
-				.ok_or(Error::<T>::TooManyVotes)?;
+				DispatchResult::Ok(())
+			})?;
 
-			Stakes::<T>::insert(identity, &stake);
-			Stakes::<T>::insert(target, &target_stake);
-
-			Ok(())
-		}
-
-		#[pallet::weight(1000000000000)]
-		#[pallet::call_index(2)]
-		pub fn change_addr(
-			origin: OriginFor<T>,
-			identity: NodeIdentity,
-			addr: NodeAddress,
-		) -> DispatchResult {
-			let sender = ensure_signed(origin)?;
-			let mut stake = Stakes::<T>::get(identity).ok_or(Error::<T>::NoSuchStake)?;
-			ensure!(stake.owner == sender, Error::<T>::NotOwner);
-
-			stake.addr = addr;
-			Stakes::<T>::insert(identity, &stake);
-			Self::deposit_event(Event::AddrChanged { identity: stake.id, addr });
+			Self::deposit_event(Event::Voted { source, target });
 
 			Ok(())
 		}
 
 		#[pallet::weight(1000000000000)]
 		#[pallet::call_index(3)]
+		pub fn change_addr(
+			origin: OriginFor<T>,
+			identity: NodeIdentity,
+			addr: NodeAddress,
+		) -> DispatchResult {
+			Self::ensure_stake_owner(identity, origin)?;
+			Addresses::<T, I>::insert(identity, addr);
+			Self::deposit_event(Event::AddrChanged { identity, addr });
+			Ok(())
+		}
+
+		#[pallet::weight(1000000000000)]
+		#[pallet::call_index(4)]
 		pub fn reclaim(origin: OriginFor<T>, identity: NodeIdentity) -> DispatchResult {
-			let receiver = ensure_signed(origin)?;
-			let stake = Stakes::<T>::get(identity).ok_or(Error::<T>::NoSuchStake)?;
-			ensure!(stake.owner == receiver, Error::<T>::NotOwner);
+			let (owner, stake) = Self::ensure_stake_owner(identity, origin)?;
 			ensure!(
-				stake.created_at.saturated_into::<u64>() + STAKE_DURATION_MILIS <=
-					pallet_timestamp::Pallet::<T>::get().saturated_into::<u64>(),
-				Error::<T>::StakeIsLocked
+				stake.frozen_until <= frame_system::Pallet::<T>::block_number(),
+				Error::<T, I>::StakeIsLocked
 			);
 
-			Stakes::<T>::remove(identity);
+			Stakes::<T, I>::remove(identity);
 
 			// let balance = T::Currency::free_balance(&receiver);
 			// print!("current balance: {balance:?}");
 
-			let amount = stake.apply_slashes();
 			let treasury = Self::account_id();
-			T::Currency::transfer(&treasury, &receiver, amount, ExistenceRequirement::AllowDeath)?;
+			T::Currency::transfer(
+				&treasury,
+				&owner,
+				stake.staked,
+				ExistenceRequirement::AllowDeath,
+			)?;
 
-			Stakes::<T>::remove(identity);
+			Stakes::<T, I>::remove(identity);
 
-			Self::deposit_event(Event::Reclaimed { identity: stake.id });
+			Self::deposit_event(Event::Reclaimed { identity });
 
 			Ok(())
 		}
