@@ -1,22 +1,39 @@
 {
+  description = "Rust nightly development shell with subxt";
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, flake-utils, ... }: flake-utils.lib.eachDefaultSystem (system:
-    let
-      pkgs = import nixpkgs { inherit system; };
-    in
-    {
-      devShells.default = pkgs.mkShell {
-        packages = with pkgs; [
-          rustup
-          clang
-          protobuf
-        ];
-
-        LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+  outputs = {
+    nixpkgs,
+    rust-overlay,
+    ...
+  }: let
+    system = "x86_64-linux";
+  in {
+    devShells."${system}".default = let
+      overlays = [(import rust-overlay)];
+      pkgs = import nixpkgs {
+        inherit system overlays;
       };
-    });
+    in
+      pkgs.mkShell {
+        packages = with pkgs; [
+          subxt
+        ];
+        buildInputs = with pkgs; [
+          (
+            rust-bin.selectLatestNightlyWith (toolchain:
+              toolchain.default.override {
+                extensions = [
+                  "rust-src"
+                ];
+              })
+          )
+        ];
+      };
+  };
 }
