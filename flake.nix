@@ -1,22 +1,38 @@
 {
+  description = "Rust nightly development shell with subxt";
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, flake-utils, ... }: flake-utils.lib.eachDefaultSystem (system:
-    let
-      pkgs = import nixpkgs { inherit system; };
+  outputs = {
+    nixpkgs,
+    rust-overlay,
+    ...
+  }: let
+    system = "x86_64-linux";
+  in {
+    devShells."${system}".default = let
+      overlays = [(import rust-overlay)];
+      pkgs = import nixpkgs {
+        inherit system overlays;
+      };
     in
-    {
-      devShells.default = pkgs.mkShell {
+      pkgs.mkShell {
         packages = with pkgs; [
-          rustup
-          clang
-          protobuf
+          subxt
         ];
-
+        buildInputs = with pkgs; [
+          protobuf
+          clang
+          (
+            rust-bin.fromRustupToolchainFile ./rust-toolchain.toml
+          )
+        ];
+        LD_LIBRARY_PATH = "${pkgs.stdenv.cc.cc.lib}/lib/:/run/opengl-driver/lib/";
         LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
       };
-    });
+  };
 }
