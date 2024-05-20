@@ -25,15 +25,13 @@
           subxt
         ];
         buildInputs = with pkgs; [
+          protobuf
+          clang
           (
-            rust-bin.selectLatestNightlyWith (toolchain:
-              toolchain.default.override {
-                extensions = [
-                  "rust-src"
-                ];
-              })
+            rust-bin.fromRustupToolchainFile ./rust-toolchain.toml
           )
         ];
+        LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
       };
   };
 }
